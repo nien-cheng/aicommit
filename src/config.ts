@@ -63,12 +63,14 @@ export const configPath = path.join(os.homedir(), ".bunnai");
 
 export interface Config {
 	OPENAI_API_KEY: string;
+	OPENAI_API_BASE?: string;
 	model: string;
 	templates: Record<string, string>;
 }
 
 const DEFAULT_CONFIG: Config = {
 	OPENAI_API_KEY: "",
+	OPENAI_API_BASE: "https://api.openai.com/v1",
 	model: "gpt-4-0125-preview",
 	templates: {
 		default: path.join(os.homedir(), ".bunnai-template"),
@@ -77,17 +79,29 @@ const DEFAULT_CONFIG: Config = {
 
 export async function readConfigFile(): Promise<Config> {
 	const fileExists = await Bun.file(configPath).exists();
-	if (!fileExists) {
-		return DEFAULT_CONFIG;
+	let config = DEFAULT_CONFIG;
+
+	if (fileExists) {
+		const configString = await Bun.file(configPath).text();
+		const fileConfig = JSON.parse(configString);
+		config = {
+			...DEFAULT_CONFIG,
+			...fileConfig,
+		};
 	}
 
-	const configString = await Bun.file(configPath).text();
-	const config = JSON.parse(configString);
+	// Environment variables override config file
+	if (process.env.OPENAI_API_KEY) {
+		config.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+	}
+	if (process.env.OPENAI_API_BASE) {
+		config.OPENAI_API_BASE = process.env.OPENAI_API_BASE;
+	}
+	if (process.env.OPENAI_MODEL) {
+		config.model = process.env.OPENAI_MODEL;
+	}
 
-	return {
-		...DEFAULT_CONFIG,
-		...config,
-	};
+	return config;
 }
 
 function validateKeys(keys: string[]): asserts keys is (keyof Config)[] {
@@ -141,6 +155,11 @@ export async function showConfigUI() {
 						: "not set",
 				},
 				{
+					label: "OpenAI API Base URL",
+					value: "OPENAI_API_BASE",
+					hint: config.OPENAI_API_BASE || "https://api.openai.com/v1",
+				},
+				{
 					label: "Model",
 					value: "model",
 					hint: config.model,
@@ -151,12 +170,17 @@ export async function showConfigUI() {
 					hint: "edit the prompt template",
 				},
 				{
+					label: "Test Configuration",
+					value: "test",
+					hint: "test API connection",
+				},
+				{
 					label: "Cancel",
 					value: "cancel",
 					hint: "exit",
 				},
 			],
-		})) as keyof Config | "template" | "cancel" | symbol;
+		})) as keyof Config | "template" | "test" | "cancel" | symbol;
 
 		if (p.isCancel(choice)) {
 			return;
@@ -169,13 +193,16 @@ export async function showConfigUI() {
 			});
 
 			await setConfigs([["OPENAI_API_KEY", apiKey as string]]);
+		} else if (choice === "OPENAI_API_BASE") {
+			const apiBase = await p.text({
+				message: "OpenAI API Base URL",
+				initialValue: config.OPENAI_API_BASE,
+			});
+
+			await setConfigs([["OPENAI_API_BASE", apiBase as string]]);
 		} else if (choice === "model") {
-			const model = await p.select({
-				message: "Model",
-				options: (await getModels()).map((model) => ({
-					label: model,
-					value: model,
-				})),
+			const model = await p.text({
+				message: "Model (e.g., gpt-4, glm-4, deepseek-chat)",
 				initialValue: config.model,
 			});
 
@@ -221,9 +248,11 @@ export async function showConfigUI() {
 					console.log(`Prompt template '${templateChoice}' updated`);
 				});
 			}
+		} else if (choice === "test") {
+			await testConfiguration();
 		}
 
-		if (p.isCancel(choice)) {
+		if (p.isCancel(choice) || choice === "cancel") {
 			return;
 		}
 
@@ -235,7 +264,8 @@ export async function showConfigUI() {
 }
 
 async function getModels() {
-	const apiKey = (await readConfigFile()).OPENAI_API_KEY;
+	const config = await readConfigFile();
+	const apiKey = config.OPENAI_API_KEY;
 
 	if (!apiKey) {
 		throw new Error("OPENAI_API_KEY is not set");
@@ -243,8 +273,53 @@ async function getModels() {
 
 	const oai = new OpenAI({
 		apiKey,
+		baseURL: config.OPENAI_API_BASE,
 	});
 
 	const models = await oai.models.list();
 	return models.data.map((model) => model.id);
+}
+
+async function testConfiguration() {
+	const spinner = p.spinner();
+
+	try {
+		spinner.start("Testing API configuration...");
+
+		const config = await readConfigFile();
+
+		if (!config.OPENAI_API_KEY) {
+			spinner.stop("API Key is not set");
+			return;
+		}
+
+		const oai = new OpenAI({
+			apiKey: config.OPENAI_API_KEY,
+			baseURL: config.OPENAI_API_BASE,
+		});
+
+		// Test with a simple API call
+		const response = await oai.chat.completions.create({
+			messages: [
+				{
+					role: "user",
+					content: "Say 'OK' if you can read this",
+				},
+			],
+			model: config.model,
+			max_tokens: 10,
+		});
+
+		const message = response.choices[0]?.message;
+		const content = message?.content || (message as any)?.reasoning_content;
+
+		if (content) {
+			spinner.stop(`✓ Configuration test successful!\n  API Base: ${config.OPENAI_API_BASE}\n  Model: ${config.model}\n  Response: ${content.trim()}`);
+		} else {
+			// Show full response for debugging
+			spinner.stop(`✓ API connection successful but unexpected response format:\n${JSON.stringify(response, null, 2)}`);
+		}
+	} catch (error: any) {
+		spinner.stop(`✗ Test failed: ${error.message}`);
+	}
 }

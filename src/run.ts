@@ -90,8 +90,14 @@ export async function run(options: RunOptions, templateName?: string) {
 		console.debug("Template rendered with git diff.");
 	}
 
+	// Show progress to stderr (won't interfere with stdout parsing)
+	if (!options.verbose) {
+		console.error("Generating commit messages...");
+	}
+
 	const oai = new OpenAI({
 		apiKey: config.OPENAI_API_KEY,
+		baseURL: config.OPENAI_API_BASE,
 	});
 
 	try {
@@ -103,7 +109,7 @@ export async function run(options: RunOptions, templateName?: string) {
 				{
 					role: "system",
 					content:
-						"You are a commit message generator. I will provide you with a git diff, and I would like you to generate an appropriate commit message using the conventional commit format. Do not write any explanations or other words, just reply with the commit message.",
+						"You are a commit message generator. I will provide you with a git diff, and you should generate 5 different appropriate commit messages using the conventional commit format. Output ONLY the commit messages in a numbered list format like:\n1. first commit message\n2. second commit message\n3. third commit message\n4. fourth commit message\n5. fifth commit message\n\nDo not write any explanations or other words.",
 				},
 				{
 					role: "user",
@@ -118,10 +124,16 @@ export async function run(options: RunOptions, templateName?: string) {
 			console.debug(JSON.stringify(response, null, 2));
 		}
 
-		const content = response.choices[0].message.content;
+		const message = response.choices[0].message;
+		const content = message.content || (message as any).reasoning_content;
+
 		if (!content) {
 			console.error("Failed to generate commit message");
 			process.exit(1);
+		}
+
+		if (!options.verbose) {
+			console.error("Done!");
 		}
 
 		console.log(content.trim());
