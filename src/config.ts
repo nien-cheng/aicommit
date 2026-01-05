@@ -1,8 +1,8 @@
-import path from "path";
+import { spawn } from "child_process";
 import os from "os";
+import path from "path";
 import * as p from "@clack/prompts";
 import OpenAI from "openai";
-import { spawn } from "child_process";
 import { template } from "./template";
 
 async function editFile(filePath: string, onExit: () => void) {
@@ -311,15 +311,29 @@ async function testConfiguration() {
 		});
 
 		const message = response.choices[0]?.message;
-		const content = message?.content || (message as any)?.reasoning_content;
+		const content =
+			message?.content ||
+			(message as { reasoning_content?: string | null } | undefined)
+				?.reasoning_content;
 
 		if (content) {
-			spinner.stop(`✓ Configuration test successful!\n  API Base: ${config.OPENAI_API_BASE}\n  Model: ${config.model}\n  Response: ${content.trim()}`);
+			spinner.stop(
+				`✓ Configuration test successful!\n  API Base: ${
+					config.OPENAI_API_BASE
+				}\n  Model: ${config.model}\n  Response: ${content.trim()}`,
+			);
 		} else {
 			// Show full response for debugging
-			spinner.stop(`✓ API connection successful but unexpected response format:\n${JSON.stringify(response, null, 2)}`);
+			spinner.stop(
+				`✓ API connection successful but unexpected response format:\n${JSON.stringify(
+					response,
+					null,
+					2,
+				)}`,
+			);
 		}
-	} catch (error: any) {
-		spinner.stop(`✗ Test failed: ${error.message}`);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		spinner.stop(`✗ Test failed: ${message}`);
 	}
 }

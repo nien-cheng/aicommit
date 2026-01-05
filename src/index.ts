@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { cli, command } from "cleye";
 import { version } from "../package.json";
-import { setConfigs, showConfigUI, type Config } from "./config";
+import { type Config, setConfigs, showConfigUI } from "./config";
 import { run } from "./run";
 import { initialize } from "./utils";
 
@@ -84,8 +84,8 @@ export const CLI = cli(
 			const { template, verbose } = argv.flags;
 
 			if (verbose) {
-				console.debug("Verbose mode enabled");
-				console.debug("Flags:", argv.flags);
+				console.error("Verbose mode enabled");
+				console.error("Flags:", argv.flags);
 			}
 
 			await initialize();

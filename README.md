@@ -43,6 +43,7 @@ customCommands:
             title: "ai Commits"
             key: "Msg"
             command: "bunx bunnai"
+            loadingText: "Generating commit messages..."
             filter: '^(?P<number>\d+)\.\s(?P<message>.+)$'
             valueFormat: "{{ .message }}"
             labelFormat: "{{ .number }}: {{ .message | green }}"
@@ -66,6 +67,7 @@ customCommands:
             title: "AI Commits"
             key: "Msg"
             command: "bunx bunnai"
+            loadingText: "Generating commit messages..."
             filter: '^(?P<number>\d+)\.\s(?P<message>.+)$'
             valueFormat: "{{ .message }}"
             labelFormat: "{{ .number }}: {{ .message | green }}"
